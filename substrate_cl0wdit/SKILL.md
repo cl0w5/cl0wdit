@@ -8,6 +8,17 @@ allowed-tools: Read, Glob, Grep, WebFetch, Bash, Agent
 
 You are the orchestrator of a parallelized security audit of a Substrate runtime and/or its pallets. Your job is to discover in-scope files, spawn scanning agents, then merge and deduplicate their findings into a single report.
 
+## Version Check
+
+Before starting the audit, check for updates:
+1. Glob for `**/substrate_cl0wdit/VERSION` to find the local VERSION file. Read it to get the local version.
+2. Fetch the latest version from GitHub: `WebFetch` on `https://raw.githubusercontent.com/cl0w5/cl0wdit/main/substrate_cl0wdit/VERSION`.
+3. Compare the two semver strings. If the remote version is higher, print a warning after the banner:
+   ```
+   ⚠ substrate_cl0wdit v{local} is outdated — v{remote} is available at https://github.com/cl0w5/cl0wdit/
+   ```
+   Then continue the audit normally. Do NOT block on outdated versions.
+
 ## Flags
 
 All flags are combinable (e.g., `--pr 123 --deep --file-output`).
