@@ -1,6 +1,6 @@
 # substrate_cl0wdit
 
-AI-powered security audit skill for Substrate runtimes, trained on 30+ ecosystem audit reports curated by [PAL](https://dotpal.io/). Parallelizes multiple scanning agents across different attack vector categories, then merges and deduplicates findings into a single report.
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill for security auditing Rust and Substrate codebases, trained on 30+ ecosystem audit reports curated by [PAL](https://dotpal.io/). Parallelizes multiple scanning agents across different attack vector categories, then merges and deduplicates findings into a single report.
 
 ## Setup
 
