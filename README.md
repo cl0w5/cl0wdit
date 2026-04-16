@@ -7,13 +7,13 @@ AI-powered security audit skill for Substrate runtimes, trained on 30+ ecosystem
 **Per-project** — copy into a specific project's skill directory:
 
 ```bash
-cp -r skills/substrate_cl0wdit /path/to/your-substrate-project/.claude/skills/
+cp -r substrate_cl0wdit /path/to/your-substrate-project/.claude/skills/
 ```
 
 **Global** — copy into your home directory to make it available across all projects:
 
 ```bash
-cp -r skills/substrate_cl0wdit ~/.claude/skills/
+cp -r substrate_cl0wdit ~/.claude/skills/
 ```
 
 ## Usage
