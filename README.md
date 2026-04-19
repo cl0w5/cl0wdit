@@ -1,6 +1,6 @@
 # substrate_cl0wdit
 
-A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill for security auditing Rust and Substrate codebases, trained on 30+ ecosystem audit reports curated by [PAL](https://dotpal.io/). Parallelizes multiple scanning agents across different attack vector categories, then merges and deduplicates findings into a single report.
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill for security auditing Rust and Substrate codebases, trained on 30+ ecosystem audit reports curated by [PAL](https://dotpal.io/). Parallelizes 10 specialized hacking agents, then deduplicates and gate-validates findings into a single report.
 
 ## Setup
 
@@ -21,7 +21,6 @@ cp -r substrate_cl0wdit ~/.claude/skills/
 ```
 /substrate_cl0wdit                     # audit current directory
 /substrate_cl0wdit --pr 123            # audit a specific PR
-/substrate_cl0wdit --pr 123 --deep     # + adversarial reasoning agent (opus, slower)
 /substrate_cl0wdit --file-output       # also write report to findings/ directory
 ```
 
@@ -29,19 +28,20 @@ Flags are combinable.
 
 ## How it works
 
-The orchestrator discovers in-scope `.rs` files, bundles them with attack vector references, and spawns parallel agents:
+The orchestrator discovers in-scope `.rs` files, bundles them with attack vector references, and spawns 10 parallel agents:
 
-| Agent | Model | Focus |
-|-------|-------|-------|
-| 1 | Sonnet | Substrate & Rust common vulnerabilities |
-| 2 | Sonnet | Runtime config, XCM & weight vectors |
-| 3 | Sonnet | DeFi, access control & crypto vectors |
-| 4 | Sonnet | Test & benchmark coverage gaps |
-| 0 | Opus | Adversarial reasoning (`--deep` only) |
+| Agent | Focus |
+|-------|-------|
+| 1–3 | Vector scanning (each against a different attack vector reference) |
+| 4 | Math precision — arithmetic, rounding, overflow, type conversions |
+| 5 | Access control — origin checks, proxy bypass, XCM origin confusion |
+| 6 | Economic security — token behaviors, oracle manipulation, weight underpricing |
+| 7 | Execution trace — hooks, cross-pallet calls, state flow, TOCTOU |
+| 8 | Invariant — conservation laws, state couplings, pool math |
+| 9 | First principles — assumption violation, unnamed bug classes |
+| 10 | Test & benchmark coverage gaps |
 
-Each vector-scan agent (1-3) receives the full production codebase but a different attack vector reference file. Agent 4 reviews test/benchmark/mock code. Agent 0 reasons freely without predefined vectors.
-
-Findings pass a 3-check false-positive gate and receive a confidence score (0-100). The orchestrator deduplicates by root cause and produces a sorted report.
+Findings are validated through a 4-gate system (Refutation → Reachability → Trigger → Impact), scored by confidence, and deduplicated by root cause. Partial findings that don't fully qualify are reported as **Leads** for manual review.
 
 ## Attack vector sources
 
@@ -55,19 +55,26 @@ Distilled from 30+ audit reports across the Polkadot ecosystem (2022-2025), cura
 
 ```
 substrate_cl0wdit/
-├── SKILL.md                             # orchestrator instructions
+├── SKILL.md                                 # orchestrator instructions
+├── VERSION                                  # version for update checks
 └── references/
-    ├── agents/
-    │   ├── adversarial-reasoning-agent.md
-    │   ├── test-benchmark-agent.md
-    │   └── vector-scan-agent.md
+    ├── hacking-agents/
+    │   ├── shared-rules.md                  # common output format & rules
+    │   ├── vector-scan-agent.md
+    │   ├── math-precision-agent.md
+    │   ├── access-control-agent.md
+    │   ├── economic-security-agent.md
+    │   ├── execution-trace-agent.md
+    │   ├── invariant-agent.md
+    │   ├── first-principles-agent.md
+    │   └── test-benchmark-agent.md
     ├── attack-vectors/
-    │   ├── substrate-attack-vectors.md    # ecosystem audit findings (30 reports)
-    │   ├── substrate-attack-vectors-1.md  # common Substrate/Polkadot vulns
-    │   └── substrate-attack-vectors-2.md  # DeFi, access control & crypto patterns
-    ├── judging.md                         # FP gate + confidence scoring
-    ├── known-false-positives.md           # patterns to suppress
-    └── report-formatting.md               # output template
+    │   ├── substrate-attack-vectors.md      # ecosystem audit findings (30 reports)
+    │   ├── substrate-attack-vectors-1.md    # common Substrate/Polkadot vulns
+    │   └── substrate-attack-vectors-2.md    # DeFi, access control & crypto patterns
+    ├── judging.md                           # 4-gate validation + confidence scoring
+    ├── known-false-positives.md             # patterns to suppress
+    └── report-formatting.md                 # output template
 ```
 
 ## Customization

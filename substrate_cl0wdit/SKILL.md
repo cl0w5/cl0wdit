@@ -1,69 +1,89 @@
 ---
 name: substrate_cl0wdit
-description: Security audit of Substrate runtime built in Rust. Scans current dir by default, or a specific PR with --pr. Add --deep for adversarial reasoning.
+description: Security audit of Substrate runtime built in Rust. Scans current dir by default, or a specific PR with --pr.
 allowed-tools: Read, Glob, Grep, WebFetch, Bash, Agent
 ---
 
 # Substrate Security Audit
 
-You are the orchestrator of a parallelized security audit of a Substrate runtime and/or its pallets. Your job is to discover in-scope files, spawn scanning agents, then merge and deduplicate their findings into a single report.
+You are the orchestrator of a parallelized security audit of a Substrate runtime and/or its pallets.
 
-## Version Check
+## Mode Selection
 
-Before starting the audit, check for updates:
-1. Glob for `**/substrate_cl0wdit/VERSION` to find the local VERSION file. Read it to get the local version.
-2. Fetch the latest version from GitHub: `WebFetch` on `https://raw.githubusercontent.com/cl0w5/cl0wdit/main/substrate_cl0wdit/VERSION`.
-3. Compare the two semver strings. If the remote version is higher, print a warning after the banner:
-   ```
-   ⚠ substrate_cl0wdit v{local} is outdated — v{remote} is available at https://github.com/cl0w5/cl0wdit/
-   ```
-   Then continue the audit normally. Do NOT block on outdated versions.
+**Exclude pattern:** skip directories `tests/`, `benchmarking/`, `mock/` and files matching `*test*.rs`, `*mock*.rs`, `*bench*.rs`.
 
-## Flags
+- **Default** (no arguments): scan all `.rs` files using the exclude pattern. Use Bash `find` (not Glob).
+- **`$filename ...`**: scan the specified file(s) only.
 
-All flags are combinable (e.g., `--pr 123 --deep --file-output`).
+**Flags:**
 
-- `--pr <ref>`: Audit a specific pull request. `<ref>` can be a PR number or a full GitHub PR URL. You will be in the root of the repo. Do NOT use `gh` — fetch PR data via `WebFetch` against the GitHub API (`https://api.github.com/repos/{owner}/{repo}/pulls/{number}/files`). Parse the response to get the list of changed `.rs` files and use those as scope.
-- `--deep`: Also spawn Agent 0 (adversarial reasoning, opus model). Slower and more costly.
-- `--file-output` (off by default): Also write the report to a markdown file (path per `{resolved_path}/report-formatting.md`). Without this flag, output goes to the terminal only. Never write a report file unless the user explicitly passes `--file-output`.
-
-## Scope
-
-**Production code** (Agents 1–3): all `.rs` files EXCLUDING tests, benchmarks, and mocks — directories `tests/`, `benchmarking/`, `mock/` and files matching `*test*.rs`, `*mock*.rs`, `*bench*.rs`.
-
-**Test/benchmark code** (Agent 4): the inverse — ONLY files in `tests/`, `benchmarking/`, `mock/` or matching `*test*.rs`, `*mock*.rs`, `*bench*.rs`.
-
-When no `--pr` flag is given, scan the current directory. When `--pr` is given, derive scope from the PR diff.
+- `--pr <ref>`: Audit a specific pull request. `<ref>` can be a PR number or a full GitHub PR URL. Do NOT use `gh` — fetch PR data via `WebFetch` against the GitHub API (`https://api.github.com/repos/{owner}/{repo}/pulls/{number}/files`). Parse the response for changed `.rs` files.
+- `--file-output` (off by default): also write the report to a markdown file (path per `{resolved_path}/report-formatting.md`). Never write a report file unless explicitly passed.
 
 ## Orchestration
 
-**Turn 1 — Discover.** Print the banner, then in the same message make parallel tool calls:
-- (a) Glob for `**/references/attack-vectors/substrate-attack-vectors.md` and extract the `references/` directory path (two levels up). Use this resolved path as `{resolved_path}` for all subsequent local references.
-- (b) Discover in-scope `.rs` files:
-  - **No `--pr`:** Two Bash `find` commands — one for production `.rs` files (excluding test/bench/mock), one for test/bench/mock `.rs` files only.
-  - **With `--pr`:** Use `WebFetch` to call `https://api.github.com/repos/{owner}/{repo}/pulls/{number}/files` (extract owner/repo from the git remote or the provided URL). Parse the JSON response for changed `.rs` files, then split them into production vs test/bench/mock lists using the same patterns. Do NOT use `gh`.
-**Turn 2 — Prepare.** In a single message, make parallel tool calls:
-- (a) Read `{resolved_path}/agents/vector-scan-agent.md`
-- (b) Read `{resolved_path}/agents/test-benchmark-agent.md`
-- (c) Read `{resolved_path}/report-formatting.md`
-- (d) Bash: create four per-agent bundle files in a **single command**:
-  - `/tmp/audit-agent-1-bundle.md` — all **production** `.rs` files (with `### path` headers and fenced code blocks), then `{resolved_path}/known-false-positives.md`, then `{resolved_path}/judging.md`, then `{resolved_path}/report-formatting.md`, then `{resolved_path}/attack-vectors/substrate-attack-vectors.md`.
-  - `/tmp/audit-agent-2-bundle.md` — all **production** `.rs` files (same as agent 1), then `{resolved_path}/known-false-positives.md`, then `{resolved_path}/judging.md`, then `{resolved_path}/report-formatting.md`, then `{resolved_path}/attack-vectors/substrate-attack-vectors-1.md`.
-  - `/tmp/audit-agent-3-bundle.md` — all **production** `.rs` files (same as agent 1), then `{resolved_path}/known-false-positives.md`, then `{resolved_path}/judging.md`, then `{resolved_path}/report-formatting.md`, then `{resolved_path}/attack-vectors/substrate-attack-vectors-2.md`.
-  - `/tmp/audit-agent-4-bundle.md` — all **test/bench/mock** `.rs` files (with `### path` headers and fenced code blocks), then a **summary of production dispatchables** (list every `#[pallet::call]` function name and its containing file from the production file list), then `{resolved_path}/known-false-positives.md`, then `{resolved_path}/judging.md`, then `{resolved_path}/report-formatting.md`.
-  - Print line counts for all four bundles.
+**Turn 1 — Discover.** Print the banner, then make these parallel tool calls in one message:
 
-Every vector-scan agent receives the full production codebase — only the attack-vectors file differs. Agent 4 receives test/bench/mock code plus a production dispatchable summary. Do NOT read or inline any file content into agent prompts — the bundle files replace that entirely.
+a. Discover in-scope `.rs` files per mode selection:
+   - **No `--pr`:** Two Bash `find` commands — one for production `.rs` files (excluding test/bench/mock), one for test/bench/mock `.rs` files only.
+   - **With `--pr`:** Use `WebFetch` to call `https://api.github.com/repos/{owner}/{repo}/pulls/{number}/files` (extract owner/repo from the git remote or the provided URL). Parse the JSON response for changed `.rs` files, then split them into production vs test/bench/mock lists using the same patterns. Do NOT use `gh`.
+b. Glob for `**/references/attack-vectors/substrate-attack-vectors.md` — extract the `references/` directory (two levels up) as `{resolved_path}`
+c. Read the local `VERSION` file from the same directory as this skill
+d. Bash `curl -sf https://raw.githubusercontent.com/cl0w5/cl0wdit/main/substrate_cl0wdit/VERSION`
+e. Bash `mktemp -d /tmp/audit-XXXXXX` → store as `{bundle_dir}`
 
-**Turn 3 — Spawn.** In a single message, spawn all agents as parallel foreground Agent tool calls (do NOT use `run_in_background`). Always spawn Agents 1–4. Only spawn Agent 0 when `--deep` is set.
+If the remote VERSION fetch succeeds and differs from local, print `⚠ substrate_cl0wdit v{local} is outdated — v{remote} is available at https://github.com/cl0w5/cl0wdit/`. If it fails, skip silently.
 
-- **Agent 1** (Substrate & Rust vectors) — spawn with `model: "sonnet"`. Prompt must contain the full text of `vector-scan-agent.md` (read in Turn 2, paste into prompt). After the instructions, add: `Your bundle file is /tmp/audit-agent-1-bundle.md (XXXX lines).` (substitute the real line count).
-- **Agent 2** (Runtime config, XCM & weight vectors) — spawn with `model: "sonnet"`. Same as Agent 1 but: `Your bundle file is /tmp/audit-agent-2-bundle.md (XXXX lines).`
-- **Agent 3** (DeFi, access control & crypto vectors) — spawn with `model: "sonnet"`. Same as Agent 1 but: `Your bundle file is /tmp/audit-agent-3-bundle.md (XXXX lines).`
-- **Agent 4** (Test & benchmark) — spawn with `model: "sonnet"`. Prompt must contain the full text of `test-benchmark-agent.md` (read in Turn 2, paste into prompt). After the instructions, add: `Your bundle file is /tmp/audit-agent-4-bundle.md (XXXX lines).`
-- **Agent 0** (adversarial reasoning, `--deep` only) — spawn with `model: "opus"`. Receives the in-scope production `.rs` file paths and the instruction: your reference directory is `{resolved_path}`. Read `{resolved_path}/agents/adversarial-reasoning-agent.md` for your full instructions.
+**Turn 2 — Prepare.** In one message, make parallel tool calls: (a) Read `{resolved_path}/report-formatting.md`, (b) Read `{resolved_path}/judging.md`.
 
-**Turn 4 — Report.** Merge all agent results (up to 5 agents): deduplicate by root cause (keep the higher-confidence version), sort by confidence highest-first, re-number sequentially, and insert the **Below Confidence Threshold** separator row. Print findings directly — do not re-draft or re-describe them. Use report-formatting.md (read in Turn 2) for the scope table and output structure. If `--file-output` is set, write the report to a file (path per report-formatting.md) and print the path.
+Then build all bundles in a single Bash command using `cat` (not shell variables or heredocs):
+
+1. `{bundle_dir}/source.md` — ALL in-scope production `.rs` files, each with a `### path` header and fenced code block.
+2. Agent bundles = `source.md` + agent-specific files:
+
+| Bundle               | Appended files (relative to `{resolved_path}`)                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `agent-1-bundle.md`  | `attack-vectors/substrate-attack-vectors.md` + `hacking-agents/vector-scan-agent.md` + `hacking-agents/shared-rules.md`   |
+| `agent-2-bundle.md`  | `attack-vectors/substrate-attack-vectors-1.md` + `hacking-agents/vector-scan-agent.md` + `hacking-agents/shared-rules.md` |
+| `agent-3-bundle.md`  | `attack-vectors/substrate-attack-vectors-2.md` + `hacking-agents/vector-scan-agent.md` + `hacking-agents/shared-rules.md` |
+| `agent-4-bundle.md`  | `hacking-agents/math-precision-agent.md` + `hacking-agents/shared-rules.md`                                               |
+| `agent-5-bundle.md`  | `hacking-agents/access-control-agent.md` + `hacking-agents/shared-rules.md`                                               |
+| `agent-6-bundle.md`  | `hacking-agents/economic-security-agent.md` + `hacking-agents/shared-rules.md`                                            |
+| `agent-7-bundle.md`  | `hacking-agents/execution-trace-agent.md` + `hacking-agents/shared-rules.md`                                              |
+| `agent-8-bundle.md`  | `hacking-agents/invariant-agent.md` + `hacking-agents/shared-rules.md`                                                    |
+| `agent-9-bundle.md`  | `hacking-agents/first-principles-agent.md` + `hacking-agents/shared-rules.md`                                             |
+| `agent-10-bundle.md` | test/bench/mock `.rs` files (with `### path` headers) + production dispatchable summary + `hacking-agents/test-benchmark-agent.md` |
+
+Every hacking agent (1–9) receives the full production codebase via `source.md`. Agent 10 receives test/bench/mock code plus a production dispatchable summary (list every `#[pallet::call]` function name and its containing file). All bundles also get `known-false-positives.md` + `judging.md` + `report-formatting.md` appended.
+
+Print line counts for every bundle and `source.md`. Do NOT inline file content into agent prompts.
+
+**Turn 3 — Spawn.** In one message, spawn all 10 agents as parallel foreground Agent calls. Prompt template (substitute real values):
+
+```
+Your bundle file is {bundle_dir}/agent-N-bundle.md (XXXX lines).
+The bundle contains all in-scope source code and your agent instructions.
+Read the bundle fully before producing findings.
+```
+
+**Turn 4 — Deduplicate, validate & output.** Single-pass: deduplicate all agent results, gate-evaluate, and produce the final report in one turn. Do NOT print an intermediate dedup list — go straight to the report.
+
+1. **Deduplicate.** Parse every FINDING and LEAD from all agents. Group by `group_key` field (format: `Pallet | function | bug-class`). Exact-match first; then merge synonymous bug_class tags sharing the same pallet and function. Keep the best version per group, number sequentially, annotate `[agents: N]`.
+
+   Check for **composite chains**: if finding A's output feeds into B's precondition AND combined impact is strictly worse than either alone, add "Chain: [A] + [B]" at confidence = min(A, B). Most audits have 0–2.
+
+2. **Gate evaluation.** Run each deduplicated finding through the four gates in `judging.md` (do not skip or reorder). Evaluate each finding exactly once — do not revisit after verdict.
+
+   **Single-pass protocol:** evaluate every relevant code path ONCE in fixed order (hooks → dispatchables → internal helpers → cross-pallet calls). One-line verdict per path: `BLOCKS`, `ALLOWS`, `IRRELEVANT`, or `UNCERTAIN`. Commit after all paths — do not re-examine. `UNCERTAIN` = `ALLOWS`.
+
+3. **Lead promotion & rejection guardrails.**
+   - Promote LEAD → FINDING (confidence 75) if: complete exploit chain traced in source, OR `[agents: 2+]` demoted (not rejected) the same issue.
+   - `[agents: 2+]` does NOT override a concrete refutation — demote to LEAD if refutation is uncertain.
+   - No deployer-intent reasoning — evaluate what the code _allows_, not how the deployer _might_ use it.
+
+4. **Fix verification** (confidence ≥ 80 only): trace the attack with fix applied; verify no new DoS, panic, or broken invariants; list all locations if the pattern repeats. If no safe fix exists, omit it with a note.
+
+5. **Format and print** per `report-formatting.md`. Exclude rejected items. If `--file-output`: also write to file.
 
 ## Banner
 
